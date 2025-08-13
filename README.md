@@ -1,3 +1,14 @@
+> [!WARNING]
+> # Deprecation notice
+> This API server codebase is deprecated. Please visit latest implementation:
+> - Prayer Time API: https://github.com/mptwaktusolat/api-waktusolat-x
+> 
+> Internal usage:
+> - Images Media Endpoint: https://github.com/mptwaktusolat/api-islamic-media
+> - Feedback Endpoint: https://github.com/iqfareez/maklum
+
+____
+
 ![Vercel](https://img.shields.io/badge/vercel-%23000000.svg?style=for-the-badge&logo=vercel&logoColor=white)
 ![Next JS](https://img.shields.io/badge/Next-black?style=for-the-badge&logo=next.js&logoColor=white)
 
@@ -80,7 +91,7 @@ View the fetcher implementation [here](./fetcher).
 
 #### Public usage
 
-See https://api.waktusolat.app/docs
+See https://mpt-server.vercel.app/docs
 
 #### Internal usage (MPT App)
 * **`POST`** `/api/feedback`
