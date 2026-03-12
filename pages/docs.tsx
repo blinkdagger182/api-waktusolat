@@ -6,7 +6,7 @@ const ApiReference = applyVueInReact(VueComponent)
 function App() {
     const configuration = {
         spec: {
-            url: 'https://raw.githubusercontent.com/mptwaktusolat/open-api-spec/main/mpt-server-api.yaml'
+            url: '/openapi.yaml'
         },
         metaData: {
             title: 'API References | Waktu Solat API',
