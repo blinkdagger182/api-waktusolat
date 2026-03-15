@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "jest"
+    "test": "jest",
+    "sync:live-data": "node scripts/sync-live-data.mjs",
+    "import:supabase": "node scripts/import-supabase-data.mjs"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.1.2",

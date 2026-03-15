@@ -25,6 +25,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: "/zones/:lat/:long",
+        destination: "/api/zones/gps?lat=:lat&long=:long"
+      },
+      {
         // Make http://localhost:3000/v2/solat/sgr01 resolved to http://localhost:3000/api/v2/solat/sgr01
         source: "/:path((?!locations|docs|api|health).*)",
         destination: "/api/:path"

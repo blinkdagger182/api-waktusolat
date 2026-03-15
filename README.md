@@ -54,6 +54,34 @@ yarn dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+### Mirror the live dataset locally
+
+To pull the live JSON dataset from `api.waktusolat.app` into a local file:
+
+```bash
+yarn sync:live-data --start-year 2023 --end-year 2027 --output json/full-dump.json
+```
+
+The script fetches `/zones` and then downloads `/v2/solat/{zone}?year=YYYY&month=M` for every zone/month in the requested range.
+
+For a smaller probe, limit the month range:
+
+```bash
+yarn sync:live-data --start-year 2026 --end-year 2026 --start-month 3 --end-month 3 --output json/march-2026.json
+```
+
+### Store the mirrored data in Supabase
+
+1. Run the SQL in [supabase/schema.sql](/Users/rizhanruslan/Developer/api-waktusolat/supabase/schema.sql) inside the Supabase SQL editor.
+2. Set `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` or `.env.local`.
+3. Import the mirrored dump:
+
+```bash
+yarn import:supabase --input json/full-dump.json
+```
+
+When those env vars are present, the `v2/solat` API routes will read from Supabase first and fall back to Firebase only if Supabase is not configured.
+
 The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
 
 ## (Optional) Make your own Firestore database instance

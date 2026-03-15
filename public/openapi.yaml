@@ -438,6 +438,10 @@ components:
           type: string
           description: Month name. All possible values - JAN | FEB | MAR | APR | MAY | JUN | JUL | AUG | SEP | OCT | NOV | DEC
           example: MAR
+        month_number:
+          type: integer
+          description: Numeric month retained for backwards compatibility
+          example: 3
         last_updated:
           type: string
           format: date-time

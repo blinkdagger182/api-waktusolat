@@ -1,8 +1,10 @@
 import {NextApiRequest, NextApiResponse} from "next";
 import {initializeApp} from "firebase/app";
-import {collection, doc, getDoc, getDocs, getFirestore, Timestamp} from "firebase/firestore";
-import PolygonLookup from 'polygon-lookup';
+import {collection, doc, getDoc, getFirestore, Timestamp} from "firebase/firestore";
 import axios from "axios";
+import { getPrayerMonthFromSupabase, isSupabaseConfigured } from "../../../../../../../lib/supabase-admin";
+import { getMalaysiaCurrentDate, monthNameToNumber, resolveQueryMonth, resolveQueryYear } from "../../../../../../../lib/waktu-solat";
+import { lookupZone } from "../../../../../../../lib/zone-lookup";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     const {lat, long, year, month, debug} = req.query;
@@ -26,45 +28,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
     }
 
-    const lookup = new PolygonLookup(geojsonData);
-    const result = lookup.search(long, lat);
-
-    try {
-        const jakimCode = result.properties.jakim_code;
-
-        if (jakimCode === undefined) return res.status(404).json({
-            error: `No JAKIM code associated with this coordinate`,
-        });
-
-        console.log(`Zone: ${jakimCode}`);
-        
-        zone = jakimCode;
-    } catch (e) {
+    const match = lookupZone(geojsonData, lat.toString(), long.toString());
+    if (!match) {
         return res.status(404).json({
             error: `No zone found for the supplied coordinates. Are you outside of Malaysia?`,
         });
     }
+    console.log(`Zone: ${match.zone}`);
+    zone = match.zone;
     
-    const utcDate = new Date();
-    // Set the time zone to GMT+8
-    const gmt8Options = { timeZone: 'Asia/Kuala_Lumpur' };
-    const gmt8Date = new Intl.DateTimeFormat('en-US', gmt8Options).format(utcDate);
-
-    // Extract the year from the GMT+8 date
-    const malaysiaCurrentDate = new Date(gmt8Date);
+    const malaysiaCurrentDate = getMalaysiaCurrentDate();
 
     let queryYear: number;
-    if (!year) {
-        queryYear = malaysiaCurrentDate.getFullYear();        
-    } else {
-        queryYear = parseInt(year.toString());
+    try {
+        queryYear = resolveQueryYear(year, malaysiaCurrentDate);
+    } catch (error) {
+        res.status(500).json({
+            error: error.message
+        });
+        return;
     }
 
-    // check for valid year
-    if (isNaN(queryYear)) {
-        res.status(500).json({
-            error: `Invalid year: ${year.toString()}`
+    // check month if an integer
+    let fetch_for_month;
+    try {
+        fetch_for_month = resolveQueryMonth(month, malaysiaCurrentDate);
+    } catch (error) {
+        return res.status(500).json({
+            error: error.message
         });
+    }
+
+    // build response
+    let response: any = {};
+    if (debug && debug == '1') response['debug'] = {
+        'malaysiaDate' : malaysiaCurrentDate.toLocaleDateString()
+    }
+    response['zone'] = zone.toString().toUpperCase()
+    response['year'] = queryYear;
+    response['month'] = fetch_for_month;
+    response['month_number'] = monthNameToNumber(fetch_for_month);
+
+    if (isSupabaseConfigured()) {
+        const supabaseRecord = await getPrayerMonthFromSupabase(zone.toString().toUpperCase(), queryYear, fetch_for_month);
+        if (!supabaseRecord) {
+            res.status(404).json({
+                error: `No data found for zone: ${zone.toString().toUpperCase()} for ${fetch_for_month.toString().toUpperCase()}/${queryYear}`
+            });
+            return;
+        }
+
+        response['last_updated'] = supabaseRecord.last_updated;
+        response['prayers'] = supabaseRecord.prayers;
+
+        res.setHeader('Cache-Control', 'public, s-maxage=43200');
+        res.status(200).json(response);
         return;
     }
 
@@ -79,53 +97,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         measurementId: "G-8K4GZ6RK8R"
     };
 
-    // Initialize Firebase
     const firebaseApp = initializeApp(firebaseConfig);
-
-    // Initialize Cloud Firestore and get a reference to the service
     const db = getFirestore(firebaseApp);
-
-    // get current month (by its name)
-    /// NOTE: Jangan pakai 'en-MY' sebab beza. Cth SEPT vs SEP
-    const currentMonth = malaysiaCurrentDate.toLocaleString('en-US', {
-        month: 'short'
-    });
-
-    // check month if an integer
-    let fetch_for_month;
-    if (month === undefined) {
-        fetch_for_month = currentMonth.toUpperCase();
-    } else {
-
-        try {
-            const monthNumber = parseInt(month.toString());
-
-            // check if month is within 1-12
-            if (monthNumber < 1 || monthNumber > 12) throw new Error(`Invalid month: ${month.toString()}. Please specify month between 1-12`)
-
-            if (isNaN(monthNumber)) throw new Error(`Invalid month: ${month.toString()}`)
-            const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-            fetch_for_month = monthNames[monthNumber - 1];
-
-        } catch (e) {
-            return res.status(500).json({
-                error: `${e.message}`
-            });
-        }
-    }
-
-    console.log(`waktusolat/${queryYear}/${fetch_for_month}`)
-
-    // load db collection
     const monthCollectionRef = collection(db, `waktusolat/${queryYear}/${fetch_for_month}`);
-
-    // get document with ID "SGR01" from collection
     const docRef = doc(monthCollectionRef, zone.toString().toUpperCase());
-
-    // retrieve document data
     const docSnapshot = await getDoc(docRef);
 
-    // check if document exists
     if (!docSnapshot.exists()) {
         res.status(404).json({
             error: `No data found for zone: ${zone.toString().toUpperCase()} for ${fetch_for_month.toString().toUpperCase()}/${queryYear}`
@@ -134,15 +111,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const documentData = docSnapshot.data();
-
-    // build response
-    let response = {};
-    if (debug && debug == '1') response['debug'] = {
-        'malaysiaDate' : malaysiaCurrentDate.toLocaleDateString()
-    }
-    response['zone'] = zone.toString().toUpperCase()
-    response['year'] = queryYear;
-    response['month'] = fetch_for_month;
 
     // record the last update time
     const rootCollection = collection(db, `waktusolat`);

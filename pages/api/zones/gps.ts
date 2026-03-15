@@ -1,5 +1,5 @@
-import PolygonLookup from 'polygon-lookup';
 import axios from "axios";
+import { lookupZone } from "../../../lib/zone-lookup";
 
 
 export default async function handler(req, res) {
@@ -23,28 +23,15 @@ export default async function handler(req, res) {
         });
     }
 
-    const lookup = new PolygonLookup(geojsonData);
-    const result = lookup.search(long, lat);
+    const match = lookupZone(geojsonData, lat, long);
 
-    try {
-        const jakimCode = result.properties.jakim_code;
-        const state = result.properties.state;
-        const district = result.properties.name;
-
-        if (jakimCode === undefined) return res.status(404).json({
-            error: `No JAKIM code associated with this coordinate`,
-        });
-
-        return res.status(200).json({
-            'zone': jakimCode,
-            'state': state,
-            'district': district,
-        })
-    } catch (e) {
+    if (!match) {
         return res.status(404).json({
             error: `No zone found for the supplied coordinates. Are you outside of Malaysia?`,
         });
     }
+
+    return res.status(200).json(match)
 }
 
 async function getZonesGeoJson() {

@@ -2,6 +2,7 @@ import {createMocks} from 'node-mocks-http';
 import zones from '../pages/api/zones';
 import zonesCode from '../pages/api/zones/[code]';
 import zonesFromCoordinates from '../pages/api/zones/gps';
+import { resolveJakimCode } from '../lib/zone-lookup';
 import {describe, expect, test} from '@jest/globals';
 
 describe('/api/zones', () => {
@@ -130,5 +131,31 @@ describe('/api/zones/gps', () => {
         await zonesFromCoordinates(req, res);
 
         expect(res._getStatusCode()).toBe(404);
+    });
+});
+
+describe('Perak zone corrections', () => {
+    test('Resolve Kinta to PRK02', () => {
+        expect(resolveJakimCode({
+            state: 'PRK',
+            name: 'Kinta',
+            jakim_code: 'PRK01',
+        })).toBe('PRK02');
+    });
+
+    test('Resolve Kerian to PRK06', () => {
+        expect(resolveJakimCode({
+            state: 'PRK',
+            name: 'Kerian',
+            jakim_code: 'PRK01',
+        })).toBe('PRK06');
+    });
+
+    test('Resolve Hilir Perak to PRK05', () => {
+        expect(resolveJakimCode({
+            state: 'PRK',
+            name: 'Hilir Perak',
+            jakim_code: 'PRK02',
+        })).toBe('PRK05');
     });
 });
