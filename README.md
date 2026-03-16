@@ -82,6 +82,66 @@ yarn import:supabase --input json/full-dump.json
 
 When those env vars are present, the `v2/solat` API routes will read from Supabase first and fall back to Firebase only if Supabase is not configured.
 
+### Donation pool backend
+
+Apply the latest SQL in [supabase/schema.sql](/Users/rizhanruslan/Developer/api-waktusolat/supabase/schema.sql) to create:
+
+- `donation_pool_monthly` for the public month aggregate
+- `donation_events` for idempotent event logging
+- `support_toast_schedule` for app-controlled support toast timing and copy
+
+Set `DONATION_POOL_API_KEY` for trusted backend writes. The new route is:
+
+```text
+GET  /api/donations/pool/current?month=2026-03
+POST /api/donations/pool/current
+GET  /api/support/toasts/schedule
+POST /api/support/toasts/schedule
+```
+
+`GET` is public and returns the current month total, target, cap, and progress.
+
+`POST` requires the `x-donation-admin-key` header and supports:
+
+- `action: "record"` to insert a donation event and increment the month total once
+- `action: "set_target"` to let your worker adjust the visible target as the pool grows
+
+`/api/support/toasts/schedule` lets the app fetch the live toast schedule and lets your backend update:
+
+- message copy
+- enabled or disabled state
+- launch count trigger
+- streak trigger
+- minimum hours between shows
+- priority
+- progress-bar usage
+- auto-dismiss seconds
+
+### Indonesia prayer data
+
+Indonesia prayer data uses a separate ingestion flow and separate API routes.
+
+Pull Indonesia monthly prayer schedules into a local JSON file:
+
+```bash
+yarn sync:indonesia-data --year 2026 --output json/indonesia-prayer-data.json
+```
+
+Import the generated file into Supabase after applying the latest SQL in [supabase/schema.sql](/Users/rizhanruslan/Developer/api-waktusolat/supabase/schema.sql) or the Indonesia-only SQL in [supabase/indonesia-schema.sql](/Users/rizhanruslan/Developer/api-waktusolat/supabase/indonesia-schema.sql):
+
+```bash
+yarn import:indonesia-supabase --input json/indonesia-prayer-data.json
+```
+
+Available API routes after import:
+
+```text
+/api/indonesia/regions
+/api/indonesia/regions/match?city=Bandung&province=Jawa%20Barat
+/api/indonesia/regions/resolve-gps?lat=-6.2088&long=106.8456
+/api/indonesia/v1/solat/{regionId}?year=2026&month=3
+```
+
 The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
 
 ## (Optional) Make your own Firestore database instance

@@ -8,7 +8,9 @@
     "start": "next start",
     "test": "jest",
     "sync:live-data": "node scripts/sync-live-data.mjs",
-    "import:supabase": "node scripts/import-supabase-data.mjs"
+    "import:supabase": "node scripts/import-supabase-data.mjs",
+    "sync:indonesia-data": "node scripts/sync-indonesia-data.mjs",
+    "import:indonesia-supabase": "node scripts/import-indonesia-supabase.mjs"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.1.2",
