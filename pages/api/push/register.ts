@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createClient } from '@supabase/supabase-js';
 
 type RegisterDeviceTokenRequest = {
   deviceToken: string;
@@ -32,22 +31,25 @@ export default async function handler(
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (supabaseUrl && supabaseKey) {
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      
-      const { error } = await supabase
-        .from('device_tokens')
-        .upsert({
+      const response = await fetch(`${supabaseUrl}/rest/v1/device_tokens`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify({
           device_token: deviceToken,
           platform,
           app_version: appVersion,
           device_model: deviceModel,
           updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'device_token'
-        });
+        })
+      });
 
-      if (error) {
-        console.error('Supabase error:', error);
+      if (!response.ok) {
+        console.error('Supabase error:', await response.text());
         return res.status(500).json({ success: false, message: 'Database error' });
       }
     } else {
