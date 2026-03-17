@@ -1,5 +1,5 @@
-export const DEFAULT_MONTHLY_POOL_TARGET = 150;
-export const DEFAULT_MONTHLY_POOL_CAP = 1000;
+export const DEFAULT_MONTHLY_POOL_TARGET = Number.parseInt(process.env.DONATION_POOL_DEFAULT_TARGET ?? "150", 10) || 150;
+export const DEFAULT_MONTHLY_POOL_CAP = Number.parseInt(process.env.DONATION_POOL_DEFAULT_CAP ?? "1000", 10) || 1000;
 export const DONATION_POOL_TIME_ZONE = "Asia/Kuala_Lumpur";
 
 export type DonationPoolMonthlyRecord = {
@@ -82,4 +82,3 @@ export function toDonationPoolSnapshot(record: Partial<DonationPoolMonthlyRecord
     progress: Number(progress.toFixed(4)),
   };
 }
-
