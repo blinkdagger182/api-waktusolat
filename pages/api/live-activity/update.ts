@@ -7,12 +7,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const {
-    pushToken,
+    pushToken,       // Live Activity push token (for update/end) OR device token (for start)
     prayerName,
     city,
-    prayerTime,  // ISO string or unix seconds
-    startedAt,   // ISO string or unix seconds
-    event = 'update', // 'update' | 'end'
+    prayerTime,      // ISO string or unix seconds
+    startedAt,       // ISO string or unix seconds
+    event = 'update', // 'start' | 'update' | 'end'
   } = req.body;
 
   if (!pushToken) {
@@ -25,24 +25,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const now = Math.floor(Date.now() / 1000);
   const bundleId = process.env.APPLE_BUNDLE_ID!;
 
+  const contentState = {
+    prayerName,
+    city,
+    prayerTime: prayerTime != null ? toUnix(prayerTime) : now,
+    startedAt: startedAt != null ? toUnix(startedAt) : now,
+  };
+
+  // 'start' uses the regular APNs device token and requires attributes-type + attributes
+  const apsPayload = event === 'start'
+    ? {
+        timestamp: now,
+        event: 'start',
+        'content-state': contentState,
+        'attributes-type': 'PrayerLiveActivityAttributes',
+        attributes: { activityID: 'next-prayer' },
+        alert: { title: 'Waktu Solat', body: `${prayerName} is coming up` },
+      }
+    : {
+        timestamp: now,
+        event,
+        'content-state': contentState,
+      };
+
   try {
     const result = await sendAPNs({
       deviceToken: pushToken,
       pushType: 'liveactivity',
       topic: `${bundleId}.push-type.liveactivity`,
       sandbox: true,
-      payload: {
-        aps: {
-          timestamp: now,
-          event,
-          'content-state': {
-            prayerName,
-            city,
-            prayerTime: prayerTime != null ? toUnix(prayerTime) : now,
-            startedAt: startedAt != null ? toUnix(startedAt) : now,
-          },
-        },
-      },
+      payload: { aps: apsPayload },
     });
 
     if (result.statusCode === 200) {
