@@ -5,17 +5,25 @@ import { getMalaysiaCurrentDate } from '../../../lib/waktu-solat';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUNDLE_ID = process.env.APPLE_BUNDLE_ID!;
-const LEAD_MINUTES = 30; // start Live Activity this many minutes before prayer
+const LEAD_MINUTES = 5;  // start Live Activity this many minutes before prayer
 const WINDOW_MINUTES = 5; // cron interval — only fire within this window
 
+// Syuruk excluded — not a prayer notification
 const PRAYER_NAMES: Record<string, string> = {
   fajr: 'Fajr',
-  syuruk: 'Syuruk',
   dhuhr: 'Dhuhr',
   asr: 'Asr',
   maghrib: 'Maghrib',
   isha: 'Isyak',
 };
+
+// Active hours in Malaysia time (MYT = UTC+8)
+// Enable: 05:00–08:00 (Fajr window) and 12:00–21:00 (Dhuhr → Isyak window)
+// Disable: 21:00–05:00 (overnight) and 08:00–12:00 (post-Syuruk gap)
+function isWithinActiveHours(malaysiaDate: Date): boolean {
+  const hour = malaysiaDate.getHours();
+  return (hour >= 5 && hour < 8) || (hour >= 12 && hour < 21);
+}
 
 async function supabase(path: string, init: RequestInit = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -51,6 +59,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const now = Date.now() / 1000; // unix seconds
   const malaysiaDate = getMalaysiaCurrentDate();
+
+  if (!isWithinActiveHours(malaysiaDate)) {
+    return res.status(200).json({ skipped: true, reason: 'outside active hours' });
+  }
   const month = malaysiaDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
   const year = malaysiaDate.getFullYear();
   const day = malaysiaDate.getDate();
@@ -130,7 +142,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               },
               'attributes-type': 'PrayerLiveActivityAttributes',
               attributes: { activityID: 'next-prayer' },
-              alert: { title: 'Waktu Solat', body: `${targetPrayer!.name} in ${LEAD_MINUTES} minutes` },
+              alert: { title: 'Waktu Solat', body: `${targetPrayer!.name} in ${LEAD_MINUTES} min` },
             },
           },
         });
