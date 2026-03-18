@@ -310,6 +310,7 @@ create table if not exists public.live_activity_tokens (
   prayer_name text null,
   prayer_time timestamptz null,
   city text null,
+  lead_minutes int not null default 5,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

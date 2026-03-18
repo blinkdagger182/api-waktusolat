@@ -40,6 +40,29 @@ async function supabase(path: string, init: RequestInit = {}) {
   return res.json();
 }
 
+/** Fetches all rows from a Supabase table, paginating past the 1,000-row default limit. */
+async function supabaseAll<T>(path: string): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  const results: T[] = [];
+  let offset = 0;
+  const sep = path.includes('?') ? '&' : '?';
+  while (true) {
+    const page: T[] = await supabase(`${path}${sep}limit=${PAGE_SIZE}&offset=${offset}`) ?? [];
+    results.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return results;
+}
+
+const BATCH_SIZE = 100; // max concurrent APNs connections per batch
+
+async function runInBatches<T>(items: T[], fn: (item: T) => Promise<void>): Promise<void> {
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    await Promise.all(items.slice(i, i + BATCH_SIZE).map(fn));
+  }
+}
+
 async function deleteStaleToken(pushToken: string) {
   await supabase(
     `live_activity_tokens?push_token=eq.${encodeURIComponent(pushToken)}`,
@@ -70,15 +93,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Fetch push-to-start tokens (for starting activities)
   const startTokenRows: { push_token: string; zone: string; city: string | null; lead_minutes: number }[] =
-    await supabase(
+    await supabaseAll(
       `live_activity_tokens?select=push_token,zone,city,lead_minutes&activity_id=eq.push-to-start&zone=not.is.null`
-    ) ?? [];
+    );
 
   // Fetch active activity tokens (for ending activities)
   const endTokenRows: { push_token: string; zone: string }[] =
-    await supabase(
+    await supabaseAll(
       `live_activity_tokens?select=push_token,zone&activity_id=eq.next-prayer&zone=not.is.null`
-    ) ?? [];
+    );
 
   if (startTokenRows.length === 0 && endTokenRows.length === 0) {
     return res.status(200).json({ sent: 0, message: 'No tokens' });
@@ -126,8 +149,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await supabase(`zones?select=daerah&code=eq.${zone}&limit=1`) ?? [];
       const city = zoneRows?.[0]?.daerah ?? zone;
 
-      await Promise.all(
-        startTokens.map(async (row: { push_token: string; zone: string; city: string | null; lead_minutes: number }) => {
+      await runInBatches(
+        startTokens,
+        async (row: { push_token: string; zone: string; city: string | null; lead_minutes: number }) => {
           const tokenLead = row.lead_minutes ?? LEAD_MINUTES;
 
           // Find the prayer within this token's personal window
@@ -183,7 +207,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               console.error(`APNs start error for ${row.push_token.slice(0, 16)}: ${reason}`);
             }
           }
-        })
+        }
       );
     }
 
@@ -204,8 +228,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (endedPrayer) {
         console.log(`⏱ Zone ${zone}: ending "${endedPrayer.name}" Live Activity for ${endTokens.length} device(s)`);
 
-        await Promise.all(
-          endTokens.map(async (row: { push_token: string; zone: string }) => {
+        await runInBatches(
+          endTokens,
+          async (row: { push_token: string; zone: string }) => {
             const result = await sendAPNs({
               deviceToken: row.push_token,
               pushType: 'liveactivity',
@@ -240,7 +265,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 console.error(`APNs end error for ${row.push_token.slice(0, 16)}: ${reason}`);
               }
             }
-          })
+          }
         );
       }
     }
