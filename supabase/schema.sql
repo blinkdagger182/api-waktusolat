@@ -284,6 +284,44 @@ values
   ('monthly_pool', false, 'production', 'This month''s pool is open. Keep Waktu accurate.', 'monthly_pool', null, null, 168, false, 50, true, 8)
 on conflict (trigger_key) do nothing;
 
+create table if not exists public.device_tokens (
+  device_token text primary key,
+  platform text not null check (platform in ('ios', 'android')),
+  app_version text null,
+  device_model text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists device_tokens_set_updated_at on public.device_tokens;
+
+create trigger device_tokens_set_updated_at
+before update on public.device_tokens
+for each row
+execute function public.set_updated_at();
+
+create index if not exists device_tokens_platform_idx on public.device_tokens(platform);
+
+create table if not exists public.live_activity_tokens (
+  push_token text primary key,
+  activity_id text not null,
+  device_token text null references public.device_tokens(device_token) on delete set null,
+  prayer_name text null,
+  prayer_time timestamptz null,
+  city text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists live_activity_tokens_set_updated_at on public.live_activity_tokens;
+
+create trigger live_activity_tokens_set_updated_at
+before update on public.live_activity_tokens
+for each row
+execute function public.set_updated_at();
+
+create index if not exists live_activity_tokens_device_token_idx on public.live_activity_tokens(device_token);
+
 alter table public.zones enable row level security;
 alter table public.prayer_months enable row level security;
 alter table public.indonesia_regions enable row level security;
