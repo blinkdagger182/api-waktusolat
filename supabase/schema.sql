@@ -306,6 +306,7 @@ create table if not exists public.live_activity_tokens (
   push_token text primary key,
   activity_id text not null,
   device_token text null references public.device_tokens(device_token) on delete set null,
+  zone text null,
   prayer_name text null,
   prayer_time timestamptz null,
   city text null,
