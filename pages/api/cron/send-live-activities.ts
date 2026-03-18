@@ -6,6 +6,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUNDLE_ID = process.env.APPLE_BUNDLE_ID!;
 const LEAD_MINUTES = 5;  // start Live Activity this many minutes before prayer
+const APPLE_EPOCH_OFFSET = 978307200; // Unix → Apple reference date (Jan 1, 2001)
 const WINDOW_MINUTES = 5; // cron interval — only fire within this window
 
 // Syuruk excluded — not a prayer notification
@@ -137,8 +138,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               'content-state': {
                 prayerName: targetPrayer!.name,
                 city,
-                prayerTime: targetPrayer!.time,
-                startedAt: Math.floor(now),
+                prayerTime: targetPrayer!.time - APPLE_EPOCH_OFFSET,
+                startedAt: Math.floor(now) - APPLE_EPOCH_OFFSET,
               },
               'attributes-type': 'PrayerLiveActivityAttributes',
               attributes: { activityID: 'next-prayer' },

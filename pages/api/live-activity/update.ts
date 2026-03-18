@@ -20,8 +20,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ success: false, message: 'Missing pushToken' });
   }
 
-  const toUnix = (val: string | number): number =>
-    typeof val === 'number' ? val : Math.floor(new Date(val).getTime() / 1000);
+  // Swift Date Codable decodes numbers as seconds since Apple epoch (Jan 1, 2001),
+  // not Unix epoch (Jan 1, 1970). Offset = 978307200 seconds.
+  const APPLE_EPOCH_OFFSET = 978307200;
+  const toAppleTimestamp = (val: string | number): number => {
+    const unix = typeof val === 'number' ? val : Math.floor(new Date(val).getTime() / 1000);
+    return unix - APPLE_EPOCH_OFFSET;
+  };
 
   const now = Math.floor(Date.now() / 1000);
   const bundleId = process.env.APPLE_BUNDLE_ID!;
@@ -29,8 +34,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const contentState = {
     prayerName,
     city,
-    prayerTime: prayerTime != null ? toUnix(prayerTime) : now,
-    startedAt: startedAt != null ? toUnix(startedAt) : now,
+    prayerTime: toAppleTimestamp(prayerTime != null ? prayerTime : now),
+    startedAt: toAppleTimestamp(startedAt != null ? startedAt : now),
   };
 
   // 'start' uses the regular APNs device token and requires attributes-type + attributes
