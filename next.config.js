@@ -9,7 +9,7 @@ const nextConfig = {
         source: "/api/:path*",
         headers: [
           { key: "Access-Control-Allow-Origin", value: "*" }, // allow all origin
-          { key: "Access-Control-Allow-Methods", value: "GET" },
+          { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
         ]
       },
       {
@@ -17,7 +17,7 @@ const nextConfig = {
         source: "/:path*",
         headers: [
           { key: "Access-Control-Allow-Origin", value: "*" }, // allow all origin
-          { key: "Access-Control-Allow-Methods", value: "GET" },
+          { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
         ]
       }
     ]
