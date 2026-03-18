@@ -13,6 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     prayerTime,      // ISO string or unix seconds
     startedAt,       // ISO string or unix seconds
     event = 'update', // 'start' | 'update' | 'end'
+    sandbox,         // optional override: true = sandbox APNs (debug builds)
   } = req.body;
 
   if (!pushToken) {
@@ -53,7 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       deviceToken: pushToken,
       pushType: 'liveactivity',
       topic: `${bundleId}.push-type.liveactivity`,
-      sandbox: process.env.APNS_SANDBOX === 'true',
+      sandbox: sandbox === true || process.env.APNS_SANDBOX === 'true',
       payload: { aps: apsPayload },
     });
 
