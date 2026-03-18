@@ -68,28 +68,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const year = malaysiaDate.getFullYear();
   const day = malaysiaDate.getDate();
 
-  // Get all unique zones with push-to-start tokens
-  const tokenRows: { push_token: string; zone: string; city: string | null }[] =
+  // Fetch push-to-start tokens (for starting activities)
+  const startTokenRows: { push_token: string; zone: string; city: string | null; lead_minutes: number }[] =
     await supabase(
-      `live_activity_tokens?select=push_token,zone,city&activity_id=eq.push-to-start&zone=not.is.null`
+      `live_activity_tokens?select=push_token,zone,city,lead_minutes&activity_id=eq.push-to-start&zone=not.is.null`
     ) ?? [];
 
-  if (tokenRows.length === 0) {
+  // Fetch active activity tokens (for ending activities)
+  const endTokenRows: { push_token: string; zone: string }[] =
+    await supabase(
+      `live_activity_tokens?select=push_token,zone&activity_id=eq.next-prayer&zone=not.is.null`
+    ) ?? [];
+
+  if (startTokenRows.length === 0 && endTokenRows.length === 0) {
     return res.status(200).json({ sent: 0, message: 'No tokens' });
   }
 
   // Group tokens by zone
-  const byZone = new Map<string, typeof tokenRows>();
-  for (const row of tokenRows) {
+  const byZone = new Map<string, typeof startTokenRows>();
+  for (const row of startTokenRows) {
     const z = row.zone.toUpperCase();
     if (!byZone.has(z)) byZone.set(z, []);
     byZone.get(z)!.push(row);
   }
 
+  const endByZone = new Map<string, typeof endTokenRows>();
+  for (const row of endTokenRows) {
+    const z = row.zone.toUpperCase();
+    if (!endByZone.has(z)) endByZone.set(z, []);
+    endByZone.get(z)!.push(row);
+  }
+
+  // All zones that need processing
+  const allZones = new Set([...Array.from(byZone.keys()), ...Array.from(endByZone.keys())]);
+
   let totalSent = 0;
+  let totalEnded = 0;
   let totalDeleted = 0;
 
-  for (const [zone, tokens] of Array.from(byZone)) {
+  for (const zone of Array.from(allZones)) {
     // Fetch today's prayer data for this zone
     const prayerRows: { prayers: any[] }[] =
       await supabase(
@@ -101,71 +118,133 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const todayPrayers = prayerRows[0].prayers.find((p: any) => p.day === day);
     if (!todayPrayers) continue;
 
-    // Find any prayer that's within the lead window right now
-    let targetPrayer: { name: string; time: number } | null = null;
-    for (const [key, label] of Object.entries(PRAYER_NAMES)) {
-      const prayerUnix: number = todayPrayers[key];
-      if (!prayerUnix) continue;
-      const minutesUntil = (prayerUnix - now) / 60;
-      if (minutesUntil >= LEAD_MINUTES - WINDOW_MINUTES / 2 &&
-          minutesUntil <= LEAD_MINUTES + WINDOW_MINUTES / 2) {
-        targetPrayer = { name: label, time: prayerUnix };
-        break;
-      }
+    // === START: fire for each token based on its own lead_minutes ===
+    const startTokens = byZone.get(zone) ?? [];
+    if (startTokens.length > 0) {
+      // Fetch city name once per zone
+      const zoneRows: { daerah: string }[] =
+        await supabase(`zones?select=daerah&code=eq.${zone}&limit=1`) ?? [];
+      const city = zoneRows?.[0]?.daerah ?? zone;
+
+      await Promise.all(
+        startTokens.map(async (row: { push_token: string; zone: string; city: string | null; lead_minutes: number }) => {
+          const tokenLead = row.lead_minutes ?? LEAD_MINUTES;
+
+          // Find the prayer within this token's personal window
+          let targetPrayer: { name: string; time: number } | null = null;
+          for (const [key, label] of Object.entries(PRAYER_NAMES)) {
+            const prayerUnix: number = todayPrayers[key];
+            if (!prayerUnix) continue;
+            const minutesUntil = (prayerUnix - now) / 60;
+            if (minutesUntil >= tokenLead - WINDOW_MINUTES / 2 &&
+                minutesUntil <= tokenLead + WINDOW_MINUTES / 2) {
+              targetPrayer = { name: label, time: prayerUnix };
+              break;
+            }
+          }
+
+          if (!targetPrayer) return;
+
+          console.log(`🕌 Zone ${zone}: starting "${targetPrayer.name}" (${tokenLead}min lead) for ${row.push_token.slice(0, 16)}...`);
+
+          const result = await sendAPNs({
+            deviceToken: row.push_token,
+            pushType: 'liveactivity',
+            topic: `${BUNDLE_ID}.push-type.liveactivity`,
+            sandbox: process.env.APNS_SANDBOX === 'true',
+            payload: {
+              aps: {
+                timestamp: Math.floor(now),
+                event: 'start',
+                'content-state': {
+                  prayerName: targetPrayer.name,
+                  city,
+                  prayerTime: targetPrayer.time - APPLE_EPOCH_OFFSET,
+                  startedAt: Math.floor(now) - APPLE_EPOCH_OFFSET,
+                },
+                'attributes-type': 'PrayerLiveActivityAttributes',
+                attributes: { activityID: 'next-prayer' },
+                alert: { title: 'Waktu Solat', body: `${targetPrayer.name} in ${tokenLead} min` },
+              },
+            },
+          });
+
+          if (result.statusCode === 200) {
+            totalSent++;
+          } else {
+            const reason = (() => {
+              try { return JSON.parse(result.body)?.reason ?? result.body; }
+              catch { return result.body; }
+            })();
+            if (['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(reason)) {
+              await deleteStaleToken(row.push_token);
+              totalDeleted++;
+            } else {
+              console.error(`APNs start error for ${row.push_token.slice(0, 16)}: ${reason}`);
+            }
+          }
+        })
+      );
     }
 
-    if (!targetPrayer) continue;
-
-    console.log(`🕌 Zone ${zone}: sending "${targetPrayer.name}" Live Activity to ${tokens.length} device(s)`);
-
-    // Get the zone's city name from zones table
-    const zoneRows: { daerah: string }[] =
-      await supabase(`zones?select=daerah&code=eq.${zone}&limit=1`) ?? [];
-    const city = zoneRows?.[0]?.daerah ?? zone;
-
-    // Send to each token in parallel
-    await Promise.all(
-      tokens.map(async (row: { push_token: string; zone: string; city: string | null }) => {
-        const result = await sendAPNs({
-          deviceToken: row.push_token,
-          pushType: 'liveactivity',
-          topic: `${BUNDLE_ID}.push-type.liveactivity`,
-          sandbox: process.env.APNS_SANDBOX === 'true',
-          payload: {
-            aps: {
-              timestamp: Math.floor(now),
-              event: 'start',
-              'content-state': {
-                prayerName: targetPrayer!.name,
-                city,
-                prayerTime: targetPrayer!.time - APPLE_EPOCH_OFFSET,
-                startedAt: Math.floor(now) - APPLE_EPOCH_OFFSET,
-              },
-              'attributes-type': 'PrayerLiveActivityAttributes',
-              attributes: { activityID: 'next-prayer' },
-              alert: { title: 'Waktu Solat', body: `${targetPrayer!.name} in ${LEAD_MINUTES} min` },
-            },
-          },
-        });
-
-        if (result.statusCode === 200) {
-          totalSent++;
-        } else {
-          const reason = (() => {
-            try { return JSON.parse(result.body)?.reason ?? result.body; }
-            catch { return result.body; }
-          })();
-          // Remove stale tokens immediately
-          if (['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(reason)) {
-            await deleteStaleToken(row.push_token);
-            totalDeleted++;
-          } else {
-            console.error(`APNs error for ${row.push_token.slice(0, 16)}: ${reason}`);
-          }
+    // === END: prayer time just passed (within window) ===
+    const endTokens = endByZone.get(zone) ?? [];
+    if (endTokens.length > 0) {
+      let endedPrayer: { name: string; time: number } | null = null;
+      for (const [key, label] of Object.entries(PRAYER_NAMES)) {
+        const prayerUnix: number = todayPrayers[key];
+        if (!prayerUnix) continue;
+        const minutesPast = (now - prayerUnix) / 60;
+        if (minutesPast >= 0 && minutesPast <= WINDOW_MINUTES) {
+          endedPrayer = { name: label, time: prayerUnix };
+          break;
         }
-      })
-    );
+      }
+
+      if (endedPrayer) {
+        console.log(`⏱ Zone ${zone}: ending "${endedPrayer.name}" Live Activity for ${endTokens.length} device(s)`);
+
+        await Promise.all(
+          endTokens.map(async (row: { push_token: string; zone: string }) => {
+            const result = await sendAPNs({
+              deviceToken: row.push_token,
+              pushType: 'liveactivity',
+              topic: `${BUNDLE_ID}.push-type.liveactivity`,
+              sandbox: process.env.APNS_SANDBOX === 'true',
+              payload: {
+                aps: {
+                  timestamp: Math.floor(now),
+                  event: 'end',
+                  'content-state': {
+                    prayerName: endedPrayer!.name,
+                    city: zone,
+                    prayerTime: endedPrayer!.time - APPLE_EPOCH_OFFSET,
+                    startedAt: endedPrayer!.time - LEAD_MINUTES * 60 - APPLE_EPOCH_OFFSET,
+                  },
+                  'dismissal-date': endedPrayer!.time + 5 * 60, // dismiss 5 min after prayer
+                },
+              },
+            });
+
+            if (result.statusCode === 200) {
+              totalEnded++;
+            } else {
+              const reason = (() => {
+                try { return JSON.parse(result.body)?.reason ?? result.body; }
+                catch { return result.body; }
+              })();
+              if (['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(reason)) {
+                await deleteStaleToken(row.push_token);
+                totalDeleted++;
+              } else {
+                console.error(`APNs end error for ${row.push_token.slice(0, 16)}: ${reason}`);
+              }
+            }
+          })
+        );
+      }
+    }
   }
 
-  return res.status(200).json({ sent: totalSent, deleted: totalDeleted, zones: byZone.size });
+  return res.status(200).json({ sent: totalSent, ended: totalEnded, deleted: totalDeleted, zones: allZones.size });
 }
