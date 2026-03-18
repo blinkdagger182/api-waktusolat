@@ -7,7 +7,8 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUNDLE_ID = process.env.APPLE_BUNDLE_ID!;
 const LEAD_MINUTES = 5;  // start Live Activity this many minutes before prayer
 const APPLE_EPOCH_OFFSET = 978307200; // Unix → Apple reference date (Jan 1, 2001)
-const WINDOW_MINUTES = 5; // cron interval — only fire within this window
+const WINDOW_MINUTES = 5; // cron interval — used for start event window
+const END_WINDOW_MINUTES = 10; // wider window for end events so 2 cron runs can catch it
 
 // Syuruk excluded — not a prayer notification
 const PRAYER_NAMES: Record<string, string> = {
@@ -19,11 +20,12 @@ const PRAYER_NAMES: Record<string, string> = {
 };
 
 // Active hours in Malaysia time (MYT = UTC+8)
-// Enable: 05:00–08:00 (Fajr window) and 12:00–21:00 (Dhuhr → Isyak window)
-// Disable: 21:00–05:00 (overnight) and 08:00–12:00 (post-Syuruk gap)
+// Enable: 05:00–08:00 (Fajr window) and 12:00–22:00 (Dhuhr → Isyak window)
+// Disable: 22:00–05:00 (overnight) and 08:00–12:00 (post-Syuruk gap)
+// Extended to 22:00 (was 21:00) because Isha can fall as late as ~21:30 in some zones.
 function isWithinActiveHours(malaysiaDate: Date): boolean {
   const hour = malaysiaDate.getHours();
-  return (hour >= 5 && hour < 8) || (hour >= 12 && hour < 21);
+  return (hour >= 5 && hour < 8) || (hour >= 12 && hour < 22);
 }
 
 async function supabase(path: string, init: RequestInit = {}) {
@@ -92,9 +94,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const day = malaysiaDate.getDate();
 
   // Fetch push-to-start tokens (for starting activities)
-  const startTokenRows: { push_token: string; zone: string; city: string | null; lead_minutes: number }[] =
+  const startTokenRows: { push_token: string; zone: string; city: string | null }[] =
     await supabaseAll(
-      `live_activity_tokens?select=push_token,zone,city,lead_minutes&activity_id=eq.push-to-start&zone=not.is.null`
+      `live_activity_tokens?select=push_token,zone,city&activity_id=eq.push-to-start&zone=not.is.null`
     );
 
   // Fetch active activity tokens (for ending activities)
@@ -151,17 +153,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       await runInBatches(
         startTokens,
-        async (row: { push_token: string; zone: string; city: string | null; lead_minutes: number }) => {
-          const tokenLead = row.lead_minutes ?? LEAD_MINUTES;
-
-          // Find the prayer within this token's personal window
+        async (row: { push_token: string; zone: string; city: string | null }) => {
+          // Find a prayer within the fixed lead window
           let targetPrayer: { name: string; time: number } | null = null;
           for (const [key, label] of Object.entries(PRAYER_NAMES)) {
             const prayerUnix: number = todayPrayers[key];
             if (!prayerUnix) continue;
             const minutesUntil = (prayerUnix - now) / 60;
-            if (minutesUntil >= tokenLead - WINDOW_MINUTES / 2 &&
-                minutesUntil <= tokenLead + WINDOW_MINUTES / 2) {
+            if (minutesUntil >= LEAD_MINUTES - WINDOW_MINUTES / 2 &&
+                minutesUntil <= LEAD_MINUTES + WINDOW_MINUTES / 2) {
               targetPrayer = { name: label, time: prayerUnix };
               break;
             }
@@ -169,7 +169,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
           if (!targetPrayer) return;
 
-          console.log(`🕌 Zone ${zone}: starting "${targetPrayer.name}" (${tokenLead}min lead) for ${row.push_token.slice(0, 16)}...`);
+          console.log(`🕌 Zone ${zone}: starting "${targetPrayer.name}" (${LEAD_MINUTES}min lead) for ${row.push_token.slice(0, 16)}...`);
 
           const result = await sendAPNs({
             deviceToken: row.push_token,
@@ -188,7 +188,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 },
                 'attributes-type': 'PrayerLiveActivityAttributes',
                 attributes: { activityID: 'next-prayer' },
-                alert: { title: 'Waktu Solat', body: `${targetPrayer.name} in ${tokenLead} min` },
+                alert: { title: 'Waktu Solat', body: `${targetPrayer.name} in ${LEAD_MINUTES} min` },
               },
             },
           });
@@ -219,7 +219,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const prayerUnix: number = todayPrayers[key];
         if (!prayerUnix) continue;
         const minutesPast = (now - prayerUnix) / 60;
-        if (minutesPast >= 0 && minutesPast <= WINDOW_MINUTES) {
+        if (minutesPast >= 0 && minutesPast <= END_WINDOW_MINUTES) {
           endedPrayer = { name: label, time: prayerUnix };
           break;
         }

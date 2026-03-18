@@ -5,7 +5,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { pushToStartToken, zone, leadMinutes } = req.body;
+  const { pushToStartToken, zone } = req.body;
 
   if (!pushToStartToken) {
     return res.status(400).json({ success: false, message: 'Missing pushToStartToken' });
@@ -27,7 +27,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         push_token: pushToStartToken,
         activity_id: 'push-to-start',
         zone: zone ?? null,
-        lead_minutes: typeof leadMinutes === 'number' ? leadMinutes : 5,
         updated_at: new Date().toISOString(),
       }),
     });
