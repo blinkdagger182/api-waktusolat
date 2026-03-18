@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       deviceToken,
       pushType: 'alert',
       topic: process.env.APPLE_BUNDLE_ID!,
-      sandbox: true,
+      sandbox: process.env.APNS_SANDBOX === 'true',
       payload: {
         aps: {
           alert: { title, body },

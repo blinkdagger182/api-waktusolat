@@ -53,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       deviceToken: pushToken,
       pushType: 'liveactivity',
       topic: `${bundleId}.push-type.liveactivity`,
-      sandbox: true,
+      sandbox: process.env.APNS_SANDBOX === 'true',
       payload: { aps: apsPayload },
     });
 
