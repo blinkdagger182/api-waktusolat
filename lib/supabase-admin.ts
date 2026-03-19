@@ -171,3 +171,19 @@ export async function getSupportToastScheduleFromSupabase(): Promise<SupportToas
 export async function upsertSupportToastScheduleInSupabase(rows: SupportToastScheduleRecord[]) {
   return upsertSupabaseRows("support_toast_schedule", rows, "trigger_key");
 }
+
+export async function getAndroidAppVersionConfigFromSupabase(): Promise<Record<string, unknown> | null> {
+  const rows = await supabaseRequest(
+    "android_app_version?select=*&platform=eq.android&limit=1",
+    { method: "GET" }
+  );
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+export async function upsertAndroidAppVersionConfigInSupabase(config: Record<string, unknown>): Promise<void> {
+  await supabaseRequest("android_app_version?on_conflict=platform", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(config),
+  });
+}

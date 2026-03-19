@@ -7,7 +7,7 @@ import {
 } from "../lib/app-version";
 
 jest.mock("../lib/app-version", () => {
-  const actual = jest.requireActual("../lib/app-version");
+  const actual = jest.requireActual("../lib/app-version") as Record<string, unknown>;
 
   return {
     ...actual,

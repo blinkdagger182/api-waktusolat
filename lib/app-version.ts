@@ -1,5 +1,4 @@
-import fsPromises from "fs/promises";
-import path from "path";
+import { getAndroidAppVersionConfigFromSupabase, upsertAndroidAppVersionConfigInSupabase } from "./supabase-admin";
 
 export type UpdateAvailability = "none" | "optional" | "required";
 
@@ -43,8 +42,6 @@ export type AppVersionResponse = {
   updatedAt: string;
 };
 
-const APP_VERSION_FILE = path.join(process.cwd(), "json/app-version.json");
-
 export const defaultAndroidAppVersionConfig: AppVersionConfig = {
   platform: "android",
   latestVersion: "1.0.0",
@@ -64,16 +61,8 @@ export const defaultAndroidAppVersionConfig: AppVersionConfig = {
 };
 
 export async function loadAndroidAppVersionConfig(): Promise<AppVersionConfig> {
-  try {
-    const raw = await fsPromises.readFile(APP_VERSION_FILE, "utf-8");
-    return normalizeAppVersionConfig(JSON.parse(raw));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return defaultAndroidAppVersionConfig;
-    }
-
-    throw error;
-  }
+  const row = await getAndroidAppVersionConfigFromSupabase();
+  return row ? normalizeAppVersionConfig(row) : defaultAndroidAppVersionConfig;
 }
 
 export async function saveAndroidAppVersionConfig(
@@ -87,7 +76,7 @@ export async function saveAndroidAppVersionConfig(
     updatedAt: new Date().toISOString(),
   });
 
-  await fsPromises.writeFile(APP_VERSION_FILE, JSON.stringify(next, null, 2) + "\n", "utf-8");
+  await upsertAndroidAppVersionConfigInSupabase(next);
   return next;
 }
 
