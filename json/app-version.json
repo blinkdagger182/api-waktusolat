@@ -1,0 +1,17 @@
+{
+  "platform": "android",
+  "latestVersion": "1.0.0",
+  "minimumSupportedVersion": "1.0.0",
+  "title": "Update available",
+  "subtitle": "A newer Android version is ready.",
+  "message": "Update the app to get the latest fixes and improvements.",
+  "dismissible": true,
+  "ctaLabel": "Update on Play Store",
+  "playStoreUrl": "https://play.google.com/store",
+  "releaseNotes": [],
+  "publishedAt": null,
+  "effectiveFrom": null,
+  "supportUrl": null,
+  "show": false,
+  "updatedAt": "1970-01-01T00:00:00.000Z"
+}
