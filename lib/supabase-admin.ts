@@ -177,13 +177,47 @@ export async function getAndroidAppVersionConfigFromSupabase(): Promise<Record<s
     "android_app_version?select=*&platform=eq.android&limit=1",
     { method: "GET" }
   );
-  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    platform: r.platform,
+    latestVersion: r.latest_version,
+    minimumSupportedVersion: r.minimum_supported_version,
+    title: r.title,
+    subtitle: r.subtitle,
+    message: r.message,
+    dismissible: r.dismissible,
+    ctaLabel: r.cta_label,
+    playStoreUrl: r.play_store_url,
+    releaseNotes: r.release_notes,
+    publishedAt: r.published_at,
+    effectiveFrom: r.effective_from,
+    supportUrl: r.support_url,
+    show: r.show,
+    updatedAt: r.updated_at,
+  };
 }
 
 export async function upsertAndroidAppVersionConfigInSupabase(config: Record<string, unknown>): Promise<void> {
   await supabaseRequest("android_app_version?on_conflict=platform", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(config),
+    body: JSON.stringify({
+      platform: config.platform,
+      latest_version: config.latestVersion,
+      minimum_supported_version: config.minimumSupportedVersion,
+      title: config.title,
+      subtitle: config.subtitle,
+      message: config.message,
+      dismissible: config.dismissible,
+      cta_label: config.ctaLabel,
+      play_store_url: config.playStoreUrl,
+      release_notes: config.releaseNotes,
+      published_at: config.publishedAt,
+      effective_from: config.effectiveFrom,
+      support_url: config.supportUrl,
+      show: config.show,
+      updated_at: config.updatedAt,
+    }),
   });
 }
