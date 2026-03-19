@@ -31,11 +31,9 @@ async function supabaseRequest(path: string, init: RequestInit = {}) {
     throw new Error(`Supabase request failed (${response.status}): ${body}`);
   }
 
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
+  const text = await response.text();
+  if (!text) return null;
+  return JSON.parse(text);
 }
 
 async function supabaseRpc<T>(fn: string, payload: Record<string, unknown>) {
