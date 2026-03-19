@@ -5,7 +5,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { pushToken, activityId, deviceToken, prayerName, prayerTime, city } = req.body;
+  const { pushToken, activityId, deviceToken, prayerName, prayerTime, city, zone } = req.body;
 
   if (!pushToken || !activityId) {
     return res.status(400).json({ success: false, message: 'Missing pushToken or activityId' });
@@ -30,6 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         prayer_name: prayerName ?? null,
         prayer_time: prayerTime ?? null,
         city: city ?? null,
+        zone: zone ?? null,
         updated_at: new Date().toISOString(),
       }),
     });

@@ -83,10 +83,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const now = Date.now() / 1000; // unix seconds
-  const malaysiaDate = getMalaysiaCurrentDate();
+  // ?testNow=<unix_seconds> overrides the clock — dev/testing only, skips active hours check
+  const testNow = req.query.testNow ? parseFloat(req.query.testNow as string) : null;
+  const now = testNow ?? Date.now() / 1000;
+  const malaysiaDate = testNow
+    ? new Date(new Date(testNow * 1000).toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' }))
+    : getMalaysiaCurrentDate();
 
-  if (!isWithinActiveHours(malaysiaDate)) {
+  if (!testNow && !isWithinActiveHours(malaysiaDate)) {
     return res.status(200).json({ skipped: true, reason: 'outside active hours' });
   }
   const month = malaysiaDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
@@ -189,6 +193,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 'attributes-type': 'PrayerLiveActivityAttributes',
                 attributes: { activityID: 'next-prayer' },
                 alert: { title: 'Waktu Solat', body: `${targetPrayer.name} in ${LEAD_MINUTES} min` },
+                'dismissal-date': targetPrayer.time + 1 * 60,
               },
             },
           });
@@ -246,7 +251,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     prayerTime: endedPrayer!.time - APPLE_EPOCH_OFFSET,
                     startedAt: endedPrayer!.time - LEAD_MINUTES * 60 - APPLE_EPOCH_OFFSET,
                   },
-                  'dismissal-date': endedPrayer!.time + 5 * 60, // dismiss 5 min after prayer
+                  'dismissal-date': endedPrayer!.time + 1 * 60, // dismiss 1 min after prayer
                 },
               },
             });
