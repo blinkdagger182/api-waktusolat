@@ -51,7 +51,7 @@ const SPECIAL_ZONE_RULES: SpecialZoneRule[] = [
     zone: "PRK07",
     state: "PRK",
     district: "Bukit Larut",
-    radiusKm: 5,
+    radiusKm: 2,
     points: [{ latitude: 4.8618713, longitude: 100.7930488 }],
   },
   {
@@ -169,6 +169,13 @@ export function lookupZone(geojsonData: any, latitude: number | string, longitud
   const result = lookup.search(parsedLongitude, parsedLatitude);
 
   if (!result?.properties) {
+    // Outside Malaysia GeoJSON — check if coordinates are in Singapore
+    if (
+      parsedLatitude >= 1.13 && parsedLatitude <= 1.48 &&
+      parsedLongitude >= 103.60 && parsedLongitude <= 104.10
+    ) {
+      return { zone: "SGP01", state: "SGP", district: "Singapore" };
+    }
     return null;
   }
 
